@@ -1,8 +1,9 @@
 {% extends "base.html" %} {% block content %}
 <div class="max-w-4xl mx-auto">
-  <h1 class="text-3xl font-bold mb-6">Painel do Analista</h1>
+  <h1 id="dashboard-title" class="text-3xl font-bold mb-6">Painel</h1>
 
-  <div class="bg-white rounded-lg shadow p-6 mb-6">
+  <!-- Analyst panel -->
+  <div id="analyst-panel" class="bg-white rounded-lg shadow p-6 mb-6 hidden">
     <h2 class="text-xl font-semibold mb-4">Conectar ao Cliente</h2>
     <div class="flex space-x-2">
       <input
@@ -18,6 +19,25 @@
         Conectar
       </button>
     </div>
+  </div>
+
+  <!-- Client panel -->
+  <div id="client-panel" class="bg-white rounded-lg shadow p-6 mb-6 hidden">
+    <h2 class="text-xl font-semibold mb-4">Gerar código para o analista</h2>
+    <p class="mb-4">
+      Gere um código temporário para enviar ao analista permitir a conexão
+      remota.
+    </p>
+    <div class="flex space-x-2">
+      <button
+        id="generate-code-btn"
+        class="bg-blue-600 text-white px-4 py-2 rounded"
+      >
+        Gerar Código
+      </button>
+      <div id="generated-code" class="ml-4 text-lg font-mono"></div>
+    </div>
+    <p id="code-expire" class="text-sm text-gray-500 mt-2"></p>
   </div>
 
   <div id="sessions" class="bg-white rounded-lg shadow p-6">
@@ -36,7 +56,18 @@
     }
   })();
 
-  // Requisitar sessões do usuário autenticado
+  async function getMe() {
+    const token = localStorage.getItem("token");
+    try {
+      const res = await axios.get("/me", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      return res.data;
+    } catch (err) {
+      return null;
+    }
+  }
+
   async function loadSessions() {
     try {
       const token = localStorage.getItem("token");
@@ -61,6 +92,28 @@
     }
   }
 
+  // Setup UI depending on user type
+  (async function () {
+    const me = await getMe();
+    if (!me) {
+      window.location.href = "/login";
+      return;
+    }
+
+    const title = document.getElementById("dashboard-title");
+    if (me.tipo_usuario === "analista") {
+      title.textContent = "Painel do Analista";
+      document.getElementById("analyst-panel").classList.remove("hidden");
+    } else {
+      title.textContent = "Painel do Cliente";
+      document.getElementById("client-panel").classList.remove("hidden");
+    }
+
+    // Always load sessions
+    loadSessions();
+  })();
+
+  // Analyst connect handler
   document.getElementById("connect-btn").addEventListener("click", async () => {
     const code = document.getElementById("client-code").value;
     const token = localStorage.getItem("token");
@@ -70,7 +123,6 @@
         { codigo_acesso: code },
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      // Redirecionar para a página da sessão
       window.location.href = `/sessao/${res.data.sessao_id}`;
     } catch (err) {
       alert(
@@ -79,7 +131,26 @@
     }
   });
 
-  // Carregar sessões ao abrir
-  loadSessions();
+  // Client generate code handler
+  document
+    .getElementById("generate-code-btn")
+    .addEventListener("click", async () => {
+      const token = localStorage.getItem("token");
+      try {
+        const res = await axios.post(
+          "/cliente/gerar-codigo",
+          {},
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        const codeEl = document.getElementById("generated-code");
+        codeEl.textContent = res.data.codigo;
+        document.getElementById("code-expire").textContent =
+          "Expira em: " + new Date(res.data.expira_em).toLocaleString();
+      } catch (err) {
+        alert(
+          "Erro ao gerar código: " + (err.response?.data?.detail || err.message)
+        );
+      }
+    });
 </script>
 {% endblock %}

@@ -1,0 +1,74 @@
+{% extends "base.html" %} {% block content %}
+<div class="max-w-4xl mx-auto">
+  <h1 class="text-3xl font-bold mb-6">Painel do Analista</h1>
+
+  <div class="bg-white rounded-lg shadow p-6 mb-6">
+    <h2 class="text-xl font-semibold mb-4">Conectar ao Cliente</h2>
+    <div class="flex space-x-2">
+      <input
+        id="client-code"
+        type="text"
+        placeholder="Código do cliente"
+        class="flex-1 px-3 py-2 border rounded"
+      />
+      <button
+        id="connect-btn"
+        class="bg-green-600 text-white px-4 py-2 rounded"
+      >
+        Conectar
+      </button>
+    </div>
+  </div>
+
+  <div id="sessions" class="bg-white rounded-lg shadow p-6">
+    <h2 class="text-xl font-semibold mb-4">Sessões Recentes</h2>
+    <div id="sessions-list">Carregando...</div>
+  </div>
+</div>
+{% endblock %} {% block scripts %}
+<script>
+  // Load sessions
+  async function loadSessions() {
+    try {
+      const token = localStorage.getItem("token");
+      const res = await axios.get("/sessoes/minhas", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const list = document.getElementById("sessions-list");
+      if (!res.data || res.data.length === 0) {
+        list.innerHTML =
+          '<p class="text-gray-500">Nenhuma sessão encontrada</p>';
+        return;
+      }
+      list.innerHTML = res.data
+        .map(
+          (s) =>
+            `<div class="border p-3 mb-2 rounded">Sessão ${s.id} - ${s.cliente} / ${s.analista}</div>`
+        )
+        .join("");
+    } catch (err) {
+      document.getElementById("sessions-list").innerHTML =
+        '<p class="text-red-500">Erro ao carregar sessões</p>';
+    }
+  }
+
+  document.getElementById("connect-btn").addEventListener("click", async () => {
+    const code = document.getElementById("client-code").value;
+    const token = localStorage.getItem("token");
+    try {
+      const res = await axios.post(
+        "/analista/iniciar-sessao",
+        { codigo_acesso: code },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      window.location.href = `/sessao/${res.data.sessao_id}`;
+    } catch (err) {
+      alert(
+        "Erro ao iniciar sessão: " + (err.response?.data?.detail || err.message)
+      );
+    }
+  });
+
+  loadSessions();
+</script>
+{% endblock %}

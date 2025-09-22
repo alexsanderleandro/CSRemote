@@ -1,0 +1,165 @@
+{% extends "base.html" %} {% block content %}
+<div class="max-w-4xl mx-auto">
+  <h1 class="text-3xl font-bold mb-6">Painel do Cliente</h1>
+
+  <div class="bg-white rounded-lg shadow p-6 mb-6">
+    <h2 class="text-xl font-semibold mb-4">Gerar código para o analista</h2>
+    <p class="mb-4">
+      Gere um código temporário e envie para o analista para permitir a conexão
+      remota.
+    </p>
+    <div class="flex items-center space-x-2">
+      <button
+        id="generate-code-btn"
+        class="bg-blue-600 text-white px-4 py-2 rounded"
+      >
+        Gerar Código
+      </button>
+      <div id="generated-code" class="ml-4 text-lg font-mono"></div>
+      <button
+        id="copy-code-btn"
+        class="bg-gray-200 text-gray-800 px-3 py-1 rounded hidden"
+      >
+        Copiar
+      </button>
+    </div>
+    <p id="code-expire" class="text-sm text-gray-500 mt-2"></p>
+  </div>
+
+  <div id="sessions" class="bg-white rounded-lg shadow p-6">
+    <h2 class="text-xl font-semibold mb-4">Sessões Recentes</h2>
+    <div id="sessions-list">Carregando...</div>
+  </div>
+
+  <!-- Modal simples -->
+  <div
+    id="modal"
+    class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 hidden"
+  >
+    <div class="bg-white rounded p-6 max-w-lg w-full">
+      <h3 class="text-xl font-semibold mb-2">Como enviar o código</h3>
+      <p class="mb-4">
+        Copie o código e envie por WhatsApp, Telegram ou e-mail para o analista.
+        O código expira rapidamente.
+      </p>
+      <div class="text-right">
+        <button
+          id="modal-close"
+          class="bg-blue-600 text-white px-4 py-2 rounded"
+        >
+          Fechar
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %} {% block scripts %}
+<script>
+  // Toast container
+  (function () {
+    const tc = document.createElement("div");
+    tc.id = "toast-container";
+    tc.style.position = "fixed";
+    tc.style.right = "1rem";
+    tc.style.bottom = "1rem";
+    tc.style.zIndex = "9999";
+    document.body.appendChild(tc);
+  })();
+
+  function showToast(message, kind = "info") {
+    const el = document.createElement("div");
+    el.className = "mb-2 px-4 py-2 rounded shadow text-white";
+    el.style.opacity = "0.95";
+    el.style.minWidth = "200px";
+    if (kind === "error") el.style.background = "#dc2626";
+    else if (kind === "success") el.style.background = "#16a34a";
+    else el.style.background = "#2563eb";
+    el.textContent = message;
+    document.getElementById("toast-container").appendChild(el);
+    setTimeout(() => el.remove(), 4000);
+  }
+  async function loadSessions() {
+    try {
+      const token = localStorage.getItem("token");
+      const res = await axios.get("/sessoes/minhas", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const list = document.getElementById("sessions-list");
+      if (!res.data || res.data.length === 0) {
+        list.innerHTML =
+          '<p class="text-gray-500">Nenhuma sessão encontrada</p>';
+        return;
+      }
+      list.innerHTML = res.data
+        .map(
+          (s) =>
+            `<div class="border p-3 mb-2 rounded">Sessão ${s.id} - ${s.cliente} / ${s.analista}</div>`
+        )
+        .join("");
+    } catch (err) {
+      document.getElementById("sessions-list").innerHTML =
+        '<p class="text-red-500">Erro ao carregar sessões</p>';
+    }
+  }
+
+  document
+    .getElementById("generate-code-btn")
+    .addEventListener("click", async () => {
+      const token = localStorage.getItem("token");
+      try {
+        const res = await axios.post(
+          "/cliente/gerar-codigo",
+          {},
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        const codeEl = document.getElementById("generated-code");
+        codeEl.textContent = res.data.codigo;
+        document.getElementById("code-expire").textContent =
+          "Expira em: " + new Date(res.data.expira_em).toLocaleString();
+        document.getElementById("copy-code-btn").classList.remove("hidden");
+        document.getElementById("modal").classList.remove("hidden");
+        // Try to copy automatically
+        try {
+          await navigator.clipboard.writeText(res.data.codigo);
+          showToast(
+            "Código gerado e copiado para área de transferência",
+            "success"
+          );
+        } catch (e) {
+          showToast(
+            'Código gerado. Clique em "Copiar" para copiar manualmente.',
+            "info"
+          );
+        }
+      } catch (err) {
+        showToast(
+          "Erro ao gerar código: " +
+            (err.response?.data?.detail || err.message),
+          "error"
+        );
+      }
+    });
+
+  document.getElementById("copy-code-btn").addEventListener("click", () => {
+    const code = document.getElementById("generated-code").textContent;
+    if (!code) return;
+    navigator.clipboard
+      .writeText(code)
+      .then(() => {
+        showToast("Código copiado para a área de transferência", "success");
+      })
+      .catch(() => {
+        showToast(
+          "Não foi possível copiar automaticamente. Selecione e copie manualmente.",
+          "error"
+        );
+      });
+  });
+
+  document.getElementById("modal-close").addEventListener("click", () => {
+    document.getElementById("modal").classList.add("hidden");
+  });
+
+  loadSessions();
+</script>
+{% endblock %}

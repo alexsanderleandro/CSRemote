@@ -47,8 +47,10 @@
         formData.append("password", password);
 
         const response = await axios.post("/token", formData);
-        localStorage.setItem("token", response.data.access_token);
-        // Redirecionar para o dashboard do analista após login
+        const token = response.data.access_token;
+        // Salvar em localStorage para uso por JS
+        localStorage.setItem("token", token);
+        // Redirecionar para o dashboard (servidor renderizará o painel correto)
         window.location.href = "/dashboard";
       } catch (error) {
         alert("Erro no login: " + error.response?.data?.detail);

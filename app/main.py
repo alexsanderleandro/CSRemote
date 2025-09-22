@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, status, WebSocket, WebSocketDisconnect, UploadFile
+from fastapi import FastAPI, Depends, HTTPException, status, WebSocket, WebSocketDisconnect, UploadFile, Response
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -23,7 +23,7 @@ from .auth import (
 )
 from .access_codes import create_temporary_code, validate_access_code, mark_code_as_used
 from .email_utils import send_confirmation_email
-from .dependencies import get_current_user, get_current_analyst, get_current_admin, get_current_client
+from .dependencies import get_current_user, get_current_analyst, get_current_admin, get_current_client, get_current_user_from_request
 from .webrtc import webrtc_manager
 from .file_manager import file_manager
 
@@ -84,7 +84,7 @@ manager = ConnectionManager()
 # ==========================================
 
 @app.post("/token", response_model=Token)
-async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+async def login(response: Response, form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     user = authenticate_user(db, form_data.username, form_data.password)
     if not user:
         raise HTTPException(
@@ -96,6 +96,8 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = 
     access_token = create_access_token(
         data={"sub": user.email}, expires_delta=access_token_expires
     )
+    # Set HttpOnly cookie for server-side auth; also return JSON for API clients
+    response.set_cookie(key="token", value=access_token, httponly=True, samesite="lax", path="/")
     return {"access_token": access_token, "token_type": "bearer"}
 
 @app.post("/cadastro/cliente", response_model=UsuarioSchema)
@@ -403,8 +405,13 @@ async def login_page(request: Request):
     return templates.TemplateResponse("login.html", {"request": request})
 
 @app.get("/dashboard", response_class=HTMLResponse)
-async def dashboard(request: Request):
-    return templates.TemplateResponse("dashboard.html", {"request": request})
+async def dashboard(request: Request, current_user: Usuario = Depends(get_current_user_from_request)):
+    # Render server-side different dashboards to avoid exposing analyst UI to clients
+    ctx = {"request": request, "user": current_user}
+    if current_user.tipo_usuario == 'analista':
+        return templates.TemplateResponse("dashboard_analista.html", ctx)
+    else:
+        return templates.TemplateResponse("dashboard_cliente.html", ctx)
 
 
 @app.get("/cadastro", response_class=HTMLResponse)
