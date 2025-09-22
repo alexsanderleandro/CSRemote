@@ -1,0 +1,39 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Run CSRemote",
+            "type": "shell",
+            "command": "python",
+            "args": ["-m", "uvicorn", "app.main:app", "--reload"],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "panel": "new"
+            },
+            "problemMatcher": [],
+            "options": {
+                "env": {
+                    "PYTHONPATH": "${workspaceFolder}"
+                }
+            }
+        },
+        {
+            "label": "Run Tests",
+            "type": "shell",
+            "command": "python",
+            "args": ["-m", "pytest"],
+            "group": "test"
+        },
+        {
+            "label": "Alembic Upgrade",
+            "type": "shell",
+            "command": "alembic",
+            "args": ["upgrade", "head"]
+        }
+    ]
+}

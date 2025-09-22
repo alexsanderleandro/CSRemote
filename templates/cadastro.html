@@ -1,0 +1,115 @@
+{% extends "base.html" %} {% block content %}
+<div class="max-w-md mx-auto bg-white rounded-lg shadow-lg p-6">
+  <h2 class="text-2xl font-bold text-center mb-6">Cadastro de Cliente</h2>
+
+  <form id="cadastro-form">
+    <div class="mb-4">
+      <label class="block text-gray-700 text-sm font-bold mb-2">Nome</label>
+      <input
+        id="nome"
+        type="text"
+        name="nome"
+        required
+        class="w-full px-3 py-2 border rounded"
+      />
+    </div>
+
+    <div class="mb-4">
+      <label class="block text-gray-700 text-sm font-bold mb-2">Email</label>
+      <input
+        id="email"
+        type="email"
+        name="email"
+        required
+        class="w-full px-3 py-2 border rounded"
+      />
+    </div>
+
+    <div class="mb-4">
+      <label class="block text-gray-700 text-sm font-bold mb-2">Senha</label>
+      <input
+        id="senha"
+        type="password"
+        name="senha"
+        required
+        class="w-full px-3 py-2 border rounded"
+      />
+    </div>
+
+    <div class="mb-4">
+      <label class="block text-gray-700 text-sm font-bold mb-2">Empresa</label>
+      <input
+        id="empresa"
+        type="text"
+        name="empresa"
+        class="w-full px-3 py-2 border rounded"
+      />
+    </div>
+
+    <div class="mb-4">
+      <label class="block text-gray-700 text-sm font-bold mb-2">CNPJ</label>
+      <input
+        id="cnpj"
+        type="text"
+        name="cnpj"
+        class="w-full px-3 py-2 border rounded"
+      />
+    </div>
+
+    <button
+      id="submit-btn"
+      type="submit"
+      class="w-full bg-green-600 text-white py-2 rounded"
+    >
+      Cadastrar
+    </button>
+  </form>
+
+  <div id="feedback" class="mt-4"></div>
+
+  <script>
+    function validateEmail(email) {
+      const re =
+        /^(([^<>()[\]\\.,;:\s@\"]+(\.[^<>()[\]\\.,;:\s@\"]+)*)|(".+"))@(([^<>()[\]\\.,;:\s@\"]+\.)+[^<>()[\]\\.,;:\s@\"]{2,})$/i;
+      return re.test(String(email).toLowerCase());
+    }
+
+    document
+      .getElementById("cadastro-form")
+      .addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const nome = document.getElementById("nome").value.trim();
+        const email = document.getElementById("email").value.trim();
+        const senha = document.getElementById("senha").value;
+        const empresa = document.getElementById("empresa").value.trim();
+        const cnpj = document.getElementById("cnpj").value.trim();
+
+        const feedback = document.getElementById("feedback");
+        feedback.innerHTML = "";
+
+        if (!nome || !email || !senha) {
+          feedback.innerHTML =
+            '<p class="text-red-500">Nome, email e senha são obrigatórios.</p>';
+          return;
+        }
+
+        if (!validateEmail(email)) {
+          feedback.innerHTML =
+            '<p class="text-red-500">Email em formato inválido.</p>';
+          return;
+        }
+
+        try {
+          const payload = { nome, email, senha, empresa, cnpj };
+          const res = await axios.post("/cadastro/cliente", payload);
+          feedback.innerHTML =
+            '<p class="text-green-600">Cadastro realizado com sucesso! Redirecionando para login...</p>';
+          setTimeout(() => (window.location.href = "/login"), 1200);
+        } catch (err) {
+          const msg = err.response?.data?.detail || err.message;
+          feedback.innerHTML = `<p class="text-red-500">Erro: ${msg}</p>`;
+        }
+      });
+  </script>
+</div>
+{% endblock %}

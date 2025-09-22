@@ -1,0 +1,381 @@
+{% extends "base.html" %} {% block content %}
+<div class="h-screen flex flex-col bg-gray-900">
+  <div class="bg-white shadow-sm p-4 flex justify-between items-center">
+    <div class="flex items-center space-x-4">
+      <h3 class="text-lg font-bold">Sessão Remota #{{ sessao_id }}</h3>
+      <span
+        id="connection-status"
+        class="px-3 py-1 bg-gray-100 text-gray-800 rounded-full text-sm"
+      >
+        Iniciando...
+      </span>
+    </div>
+
+    <div class="flex items-center space-x-2">
+      <button
+        id="toggle-files-btn"
+        class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded text-sm"
+      >
+        📁 Arquivos
+      </button>
+      <button
+        id="toggle-chat-btn"
+        class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm"
+      >
+        💬 Chat
+      </button>
+      <button
+        id="screen-share-btn"
+        class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded text-sm hidden"
+      >
+        🖥️ Compartilhar
+      </button>
+      <button
+        id="end-session-btn"
+        class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded text-sm"
+      >
+        ❌ Encerrar
+      </button>
+    </div>
+  </div>
+
+  <div class="flex-1 flex relative">
+    <!-- Área principal da tela remota -->
+    <div id="screen-area" class="flex-1 bg-gray-900 relative">
+      <div
+        class="loading-placeholder absolute inset-0 flex items-center justify-center text-white"
+      >
+        <div class="text-center">
+          <div
+            class="w-16 h-16 border-4 border-white border-t-transparent rounded-full animate-spin mx-auto mb-4"
+          ></div>
+          <p class="text-lg">Estabelecendo conexão...</p>
+          <p class="text-sm text-gray-300 mt-2">
+            Aguardando compartilhamento de tela
+          </p>
+        </div>
+      </div>
+
+      <!-- Video WebRTC -->
+      <video
+        id="remote-video"
+        class="w-full h-full object-contain hidden"
+        autoplay
+        playsinline
+      ></video>
+
+      <!-- Controles de qualidade -->
+      <div
+        class="absolute top-4 left-4 bg-black bg-opacity-50 text-white p-2 rounded text-sm"
+      >
+        <div>📊 Qualidade: <span id="quality-indicator">HD</span></div>
+        <div>📡 Latência: <span id="latency-indicator">-- ms</span></div>
+      </div>
+    </div>
+
+    <!-- Painel de arquivos -->
+    <div
+      id="files-panel"
+      class="w-80 bg-white border-l border-gray-200 flex flex-col hidden"
+    >
+      <div class="p-4 border-b border-gray-200">
+        <h4 class="font-bold text-gray-800">Transferência de Arquivos</h4>
+      </div>
+
+      <div class="p-4 border-b border-gray-200">
+        <input type="file" id="file-input" multiple class="hidden" />
+        <button
+          id="upload-btn"
+          class="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm"
+        >
+          📤 Enviar Arquivo
+        </button>
+      </div>
+
+      <div id="files-list" class="flex-1 p-4 overflow-y-auto">
+        <!-- Lista de arquivos -->
+      </div>
+    </div>
+
+    <!-- Chat lateral -->
+    <div
+      id="chat-panel"
+      class="w-80 bg-white border-l border-gray-200 flex flex-col hidden"
+    >
+      <div class="p-4 border-b border-gray-200">
+        <h4 class="font-bold text-gray-800">💬 Chat</h4>
+      </div>
+
+      <div id="chat-messages" class="flex-1 p-4 overflow-y-auto space-y-3">
+        <!-- Mensagens do chat -->
+      </div>
+
+      <div class="p-4 border-t border-gray-200">
+        <div class="flex space-x-2">
+          <input
+            type="text"
+            id="chat-input"
+            placeholder="Digite sua mensagem..."
+            class="flex-1 px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-blue-500 text-sm"
+          />
+          <button
+            id="send-message-btn"
+            class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm"
+          >
+            Enviar
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="/static/js/webrtc-client.js"></script>
+<script>
+  const sessionId = {{ sessao_id }};
+  let currentUser = null;
+  let chatSocket = null;
+  let webrtcClient = null;
+
+  // Carregar informações do usuário e inicializar
+  async function initialize() {
+      try {
+          const response = await axios.get('/me');
+          currentUser = response.data;
+
+          // Inicializar WebRTC
+          const isAnalyst = currentUser.tipo_usuario === 'analista';
+          webrtcClient = new CSRemoteClient(sessionId, isAnalyst);
+
+          // Mostrar botão de compartilhamento apenas para analista
+          if (isAnalyst) {
+              document.getElementById('screen-share-btn').classList.remove('hidden');
+          }
+
+          // Inicializar chat
+          initializeChat();
+
+          // Carregar arquivos
+          loadFiles();
+
+      } catch (error) {
+          console.error('Erro na inicialização:', error);
+          window.location.href = '/login';
+      }
+  }
+
+  // Chat WebSocket
+  function initializeChat() {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      chatSocket = new WebSocket(`${protocol}//${window.location.host}/ws/chat/${sessionId}`);
+
+      chatSocket.onmessage = (event) => {
+          const message = JSON.parse(event.data);
+          displayChatMessage(message);
+      };
+  }
+
+  function displayChatMessage(message) {
+      const chatMessages = document.getElementById('chat-messages');
+      const isOwnMessage = message.usuario_id === currentUser.id;
+
+      const messageDiv = document.createElement('div');
+      messageDiv.className = `flex ${isOwnMessage ? 'justify-end' : 'justify-start'} chat-message`;
+
+      messageDiv.innerHTML = `
+          <div class="max-w-xs lg:max-w-md px-3 py-2 rounded-lg text-sm ${
+              isOwnMessage
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-200 text-gray-800'
+          }">
+              <p class="font-semibold ${isOwnMessage ? 'text-blue-100' : 'text-gray-600'} text-xs">
+                  ${message.usuario_nome}
+              </p>
+              <p class="mt-1">${message.mensagem}</p>
+              <p class="text-xs ${isOwnMessage ? 'text-blue-100' : 'text-gray-500'} mt-1 opacity-75">
+                  ${new Date(message.timestamp).toLocaleTimeString()}
+              </p>
+          </div>
+      `;
+
+      chatMessages.appendChild(messageDiv);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+  }
+
+  // Transferência de arquivos
+  async function loadFiles() {
+      try {
+          const response = await axios.get(`/sessao/${sessionId}/files`);
+          displayFiles(response.data.files);
+      } catch (error) {
+          console.error('Erro ao carregar arquivos:', error);
+      }
+  }
+
+  function displayFiles(files) {
+      const filesList = document.getElementById('files-list');
+
+      if (files.length === 0) {
+          filesList.innerHTML = '<p class="text-gray-500 text-sm">Nenhum arquivo transferido</p>';
+          return;
+      }
+
+      filesList.innerHTML = files.map(file => `
+          <div class="border border-gray-200 rounded p-3 mb-2">
+              <div class="flex items-center justify-between">
+                  <div>
+                      <p class="font-medium text-sm">${file.filename}</p>
+                      <p class="text-xs text-gray-500">${formatFileSize(file.size)}</p>
+                  </div>
+                  <button onclick="downloadFile('${file.file_id}')"
+                          class="bg-green-600 hover:bg-green-700 text-white px-2 py-1 rounded text-xs">
+                      ⬇️ Download
+                  </button>
+              </div>
+          </div>
+      `).join('');
+  }
+
+  function formatFileSize(bytes) {
+      if (bytes === 0) return '0 Bytes';
+      const k = 1024;
+      const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  }
+
+  async function uploadFile(file) {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      try {
+          await axios.post(`/sessao/${sessionId}/upload`, formData);
+          loadFiles(); // Recarregar lista
+
+          // Notificar no chat
+          sendChatMessage(`📁 Arquivo enviado: ${file.name}`);
+      } catch (error) {
+          alert('Erro ao enviar arquivo: ' + error.response?.data?.detail);
+      }
+  }
+
+  async function downloadFile(fileId) {
+      try {
+          const response = await axios.get(`/sessao/${sessionId}/download/${fileId}`, {
+              responseType: 'blob'
+          });
+
+          // Criar download
+          const url = window.URL.createObjectURL(response.data);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = response.headers['content-disposition']?.split('filename=')[1] || 'download';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          window.URL.revokeObjectURL(url);
+      } catch (error) {
+          alert('Erro ao baixar arquivo');
+      }
+  }
+
+  // Event Listeners
+  function sendChatMessage(message = null) {
+      const input = document.getElementById('chat-input');
+      const messageText = message || input.value.trim();
+
+      if (messageText && chatSocket && chatSocket.readyState === WebSocket.OPEN) {
+          chatSocket.send(JSON.stringify({
+              usuario_id: currentUser.id,
+              mensagem: messageText
+          }));
+          if (!message) input.value = '';
+      }
+  }
+
+  // Configurar event listeners
+  document.getElementById('send-message-btn').addEventListener('click', () => sendChatMessage());
+
+  document.getElementById('chat-input').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') sendChatMessage();
+  });
+
+  document.getElementById('toggle-chat-btn').addEventListener('click', () => {
+      const chatPanel = document.getElementById('chat-panel');
+      const filesPanel = document.getElementById('files-panel');
+
+      chatPanel.classList.toggle('hidden');
+      if (!chatPanel.classList.contains('hidden')) {
+          filesPanel.classList.add('hidden');
+      }
+  });
+
+  document.getElementById('toggle-files-btn').addEventListener('click', () => {
+      const filesPanel = document.getElementById('files-panel');
+      const chatPanel = document.getElementById('chat-panel');
+
+      filesPanel.classList.toggle('hidden');
+      if (!filesPanel.classList.contains('hidden')) {
+          chatPanel.classList.add('hidden');
+      }
+  });
+
+  document.getElementById('upload-btn').addEventListener('click', () => {
+      document.getElementById('file-input').click();
+  });
+
+  document.getElementById('file-input').addEventListener('change', (e) => {
+      Array.from(e.target.files).forEach(file => uploadFile(file));
+  });
+
+  document.getElementById('screen-share-btn')?.addEventListener('click', async () => {
+      if (webrtcClient && currentUser.tipo_usuario === 'analista') {
+          try {
+              await webrtcClient.startScreenShare();
+          } catch (error) {
+              alert('Erro ao compartilhar tela');
+          }
+      }
+  });
+
+  document.getElementById('end-session-btn').addEventListener('click', async () => {
+      if (confirm('Tem certeza que deseja encerrar a sessão?')) {
+          try {
+              if (webrtcClient) webrtcClient.disconnect();
+              await axios.post(`/sessao/${sessionId}/encerrar`);
+              window.location.href = '/dashboard';
+          } catch (error) {
+              alert('Erro ao encerrar sessão');
+          }
+      }
+  });
+
+  // Drag & Drop para arquivos
+  const screenArea = document.getElementById('screen-area');
+
+  screenArea.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      screenArea.classList.add('bg-blue-900');
+  });
+
+  screenArea.addEventListener('dragleave', (e) => {
+      e.preventDefault();
+      screenArea.classList.remove('bg-blue-900');
+  });
+
+  screenArea.addEventListener('drop', (e) => {
+      e.preventDefault();
+      screenArea.classList.remove('bg-blue-900');
+
+      Array.from(e.dataTransfer.files).forEach(file => uploadFile(file));
+  });
+
+  // Inicializar aplicação
+  initialize();
+
+  // Cleanup ao sair da página
+  window.addEventListener('beforeunload', () => {
+      if (webrtcClient) webrtcClient.disconnect();
+  });
+</script>
+{% endblock %}

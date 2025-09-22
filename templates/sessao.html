@@ -1,0 +1,219 @@
+{% extends "base.html" %} {% block content %}
+<div class="h-screen flex flex-col">
+  <div class="bg-white shadow-sm p-4 flex justify-between items-center">
+    <div class="flex items-center space-x-4">
+      <h3 class="text-lg font-bold">Sessão Remota #{{ sessao_id }}</h3>
+      <span
+        id="connection-status"
+        class="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm"
+      >
+        Conectado
+      </span>
+    </div>
+
+    <div class="flex items-center space-x-2">
+      <button
+        id="toggle-chat-btn"
+        class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded"
+      >
+        Chat
+      </button>
+      <button
+        id="end-session-btn"
+        class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded"
+      >
+        Encerrar
+      </button>
+    </div>
+  </div>
+
+  <div class="flex-1 flex">
+    <!-- Área principal da tela remota -->
+    <div id="screen-area" class="flex-1 bg-gray-900 relative">
+      <div class="absolute inset-0 flex items-center justify-center text-white">
+        <div class="text-center">
+          <div
+            class="w-16 h-16 border-4 border-white border-t-transparent rounded-full animate-spin mx-auto mb-4"
+          ></div>
+          <p>Aguardando conexão WebRTC...</p>
+          <p class="text-sm text-gray-300 mt-2">
+            A funcionalidade de compartilhamento de tela será implementada com
+            WebRTC
+          </p>
+        </div>
+      </div>
+
+      <!-- Placeholder para video WebRTC -->
+      <video
+        id="remote-video"
+        class="w-full h-full object-contain hidden"
+        autoplay
+        playsinline
+      ></video>
+    </div>
+
+    <!-- Chat lateral -->
+    <div
+      id="chat-panel"
+      class="w-80 bg-white border-l border-gray-200 flex flex-col hidden"
+    >
+      <div class="p-4 border-b border-gray-200">
+        <h4 class="font-bold text-gray-800">Chat</h4>
+      </div>
+
+      <div id="chat-messages" class="flex-1 p-4 overflow-y-auto space-y-3">
+        <!-- Mensagens do chat aparecerão aqui -->
+      </div>
+
+      <div class="p-4 border-t border-gray-200">
+        <div class="flex space-x-2">
+          <input
+            type="text"
+            id="chat-input"
+            placeholder="Digite sua mensagem..."
+            class="flex-1 px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-blue-500"
+          />
+          <button
+            id="send-message-btn"
+            class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded"
+          >
+            Enviar
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const sessionId = {{ sessao_id }};
+  let currentUser = null;
+  let chatSocket = null;
+
+  // Carregar informações do usuário
+  async function loadUserInfo() {
+      try {
+          const response = await axios.get('/me');
+          currentUser = response.data;
+          initializeChat();
+      } catch (error) {
+          window.location.href = '/login';
+      }
+  }
+
+  // Inicializar WebSocket do chat
+  function initializeChat() {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      chatSocket = new WebSocket(`${protocol}//${window.location.host}/ws/chat/${sessionId}`);
+
+      chatSocket.onopen = function() {
+          console.log('Chat conectado');
+      };
+
+      chatSocket.onmessage = function(event) {
+          const message = JSON.parse(event.data);
+          displayMessage(message);
+      };
+
+      chatSocket.onclose = function() {
+          console.log('Chat desconectado');
+          setTimeout(() => {
+              if (currentUser) {
+                  initializeChat();
+              }
+          }, 3000);
+      };
+  }
+
+  // Exibir mensagem no chat
+  function displayMessage(message) {
+      const chatMessages = document.getElementById('chat-messages');
+      const isOwnMessage = message.usuario_id === currentUser.id;
+
+      const messageDiv = document.createElement('div');
+      messageDiv.className = `flex ${isOwnMessage ? 'justify-end' : 'justify-start'}`;
+
+      messageDiv.innerHTML = `
+          <div class="max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
+              isOwnMessage
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-200 text-gray-800'
+          }">
+              <p class="text-sm font-semibold ${isOwnMessage ? 'text-blue-100' : 'text-gray-600'}">
+                  ${message.usuario_nome}
+              </p>
+              <p>${message.mensagem}</p>
+              <p class="text-xs ${isOwnMessage ? 'text-blue-100' : 'text-gray-500'} mt-1">
+                  ${new Date(message.timestamp).toLocaleTimeString()}
+              </p>
+          </div>
+      `;
+
+      chatMessages.appendChild(messageDiv);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+  }
+
+  // Enviar mensagem
+  function sendMessage() {
+      const input = document.getElementById('chat-input');
+      const message = input.value.trim();
+
+      if (message && chatSocket && chatSocket.readyState === WebSocket.OPEN) {
+          chatSocket.send(JSON.stringify({
+              usuario_id: currentUser.id,
+              mensagem: message
+          }));
+          input.value = '';
+      }
+  }
+
+  // Event listeners
+  document.getElementById('send-message-btn').addEventListener('click', sendMessage);
+
+  document.getElementById('chat-input').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+          sendMessage();
+      }
+  });
+
+  document.getElementById('toggle-chat-btn').addEventListener('click', () => {
+      const chatPanel = document.getElementById('chat-panel');
+      chatPanel.classList.toggle('hidden');
+  });
+
+  document.getElementById('end-session-btn').addEventListener('click', async () => {
+      if (confirm('Tem certeza que deseja encerrar a sessão?')) {
+          try {
+              await axios.post(`/sessao/${sessionId}/encerrar`);
+              window.location.href = '/dashboard';
+          } catch (error) {
+              alert('Erro ao encerrar sessão');
+          }
+      }
+  });
+
+  // Inicializar WebRTC (placeholder)
+  async function initializeWebRTC() {
+      // Implementação futura do WebRTC para compartilhamento de tela
+      // Esta é apenas uma estrutura básica
+      try {
+          const stream = await navigator.mediaDevices.getDisplayMedia({
+              video: true,
+              audio: true
+          });
+
+          const video = document.getElementById('remote-video');
+          video.srcObject = stream;
+          video.classList.remove('hidden');
+
+          // Ocultar mensagem de loading
+          document.querySelector('#screen-area > div').style.display = 'none';
+
+      } catch (error) {
+          console.log('Compartilhamento de tela não iniciado:', error);
+      }
+  }
+  // Inicializar aplicação
+  loadUserInfo();
+</script>
+{% endblock %}

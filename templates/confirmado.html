@@ -1,0 +1,15 @@
+{% extends "base.html" %} {% block content %}
+<div class="max-w-md mx-auto bg-white rounded-lg shadow-lg p-6 text-center">
+  {% if success %}
+  <h2 class="text-2xl font-bold text-green-600">{{ message }}</h2>
+  <p class="mt-4">
+    <a href="/login" class="text-blue-600 underline">Ir para login</a>
+  </p>
+  {% else %}
+  <h2 class="text-2xl font-bold text-red-600">{{ message }}</h2>
+  <p class="mt-4">
+    <a href="/cadastro" class="text-blue-600 underline">Voltar ao cadastro</a>
+  </p>
+  {% endif %}
+</div>
+{% endblock %}
