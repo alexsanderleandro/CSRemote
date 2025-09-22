@@ -1,0 +1,9 @@
+# Treat SQLite DB files as binary
+*.db binary
+*.sqlite3 binary
+
+# Ensure consistent line endings for text files
+* text=auto
+
+# Keep template files as text
+templates/* text
