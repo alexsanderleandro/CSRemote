@@ -12,7 +12,6 @@ repos:
     hooks:
       - id: black
 
-# Local hook to prevent committing alembic/tmp_alembic.ini
   - repo: local
     hooks:
       - id: block-tmp-alembic
